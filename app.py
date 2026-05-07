@@ -63,7 +63,7 @@ class FERModel(nn.Module):
         super(FERModel, self).__init__()
 
         self.backbone = timm.create_model(
-            "efficientnet_b0",
+            "efficientnet_b4",
             pretrained=False
         )
 
