@@ -18,35 +18,39 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("😀 Facial Expression Recognition App")
-st.write("Upload a face image and predict the facial emotion.")
+st.title("😀 Facial Expression Recognition")
+st.write("Upload a face image to detect emotion.")
 
 # ----------------------------
-# GOOGLE DRIVE MODEL DOWNLOAD
+# MODEL DOWNLOAD
 # ----------------------------
 MODEL_PATH = "best_model.pth"
 
 if not os.path.exists(MODEL_PATH):
 
-    with st.spinner("Downloading model... Please wait."):
+    with st.spinner("Downloading trained model..."):
 
         file_id = "1cKCN-bwWqy3WkgR9vYqVX3skYzz5aA-W"
 
         url = f"https://drive.google.com/uc?id={file_id}"
 
-        gdown.download(url, MODEL_PATH, quiet=False)
+        gdown.download(
+            url,
+            MODEL_PATH,
+            quiet=False
+        )
 
 # ----------------------------
 # CLASS LABELS
 # ----------------------------
 CLASS_NAMES = [
-    'Angry',
-    'Disgust',
-    'Fear',
-    'Happy',
-    'Neutral',
-    'Sad',
-    'Surprise'
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Neutral",
+    "Sad",
+    "Surprise"
 ]
 
 # ----------------------------
@@ -59,9 +63,15 @@ class FERModel(nn.Module):
         super(FERModel, self).__init__()
 
         self.backbone = timm.create_model(
-            'efficientnet_b0',
-            pretrained=False,
-            num_classes=num_classes
+            "efficientnet_b0",
+            pretrained=False
+        )
+
+        in_features = self.backbone.classifier.in_features
+
+        self.backbone.classifier = nn.Linear(
+            in_features,
+            num_classes
         )
 
     def forward(self, x):
@@ -76,25 +86,55 @@ def load_model():
 
     model = FERModel(num_classes=7)
 
-    model.load_state_dict(
-        torch.load(
-            MODEL_PATH,
-            map_location=torch.device('cpu')
-        )
+    checkpoint = torch.load(
+        MODEL_PATH,
+        map_location=torch.device("cpu")
     )
+
+    # Different checkpoint formats support
+    if isinstance(checkpoint, dict):
+
+        if "model_state_dict" in checkpoint:
+
+            model.load_state_dict(
+                checkpoint["model_state_dict"],
+                strict=False
+            )
+
+        elif "state_dict" in checkpoint:
+
+            model.load_state_dict(
+                checkpoint["state_dict"],
+                strict=False
+            )
+
+        else:
+
+            model.load_state_dict(
+                checkpoint,
+                strict=False
+            )
+
+    else:
+
+        model = checkpoint
 
     model.eval()
 
     return model
 
+# Load model
 model = load_model()
 
 # ----------------------------
-# IMAGE TRANSFORMS
+# IMAGE TRANSFORM
 # ----------------------------
 transform = transforms.Compose([
+
     transforms.Resize((224, 224)),
+
     transforms.ToTensor(),
+
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]
@@ -106,27 +146,29 @@ transform = transforms.Compose([
 # ----------------------------
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades +
-    'haarcascade_frontalface_default.xml'
+    "haarcascade_frontalface_default.xml"
 )
 
 # ----------------------------
 # FILE UPLOADER
 # ----------------------------
 uploaded_file = st.file_uploader(
-    "Upload a face image",
-    type=['jpg', 'jpeg', 'png']
+    "Upload Image",
+    type=["jpg", "jpeg", "png"]
 )
 
+# ----------------------------
+# PREDICTION
+# ----------------------------
 if uploaded_file is not None:
 
-    # Read image
-    image = Image.open(uploaded_file).convert('RGB')
+    image = Image.open(uploaded_file).convert("RGB")
 
     image_np = np.array(image)
 
     st.image(
         image,
-        caption='Uploaded Image',
+        caption="Uploaded Image",
         use_container_width=True
     )
 
@@ -150,7 +192,9 @@ if uploaded_file is not None:
 
     else:
 
-        st.success(f"{len(faces)} face(s) detected")
+        st.success(
+            f"{len(faces)} face(s) detected."
+        )
 
         for (x, y, w, h) in faces:
 
@@ -164,22 +208,25 @@ if uploaded_file is not None:
             )
 
             # Crop face
-            face = image_np[y:y+h, x:x+w]
+            face = image_np[
+                y:y+h,
+                x:x+w
+            ]
 
             face_pil = Image.fromarray(face)
 
-            # Transform image
-            input_tensor = transform(face_pil)
-
-            input_tensor = input_tensor.unsqueeze(0)
+            # Transform
+            input_tensor = transform(
+                face_pil
+            ).unsqueeze(0)
 
             # Prediction
             with torch.no_grad():
 
-                output = model(input_tensor)
+                outputs = model(input_tensor)
 
                 probabilities = torch.softmax(
-                    output,
+                    outputs,
                     dim=1
                 )
 
@@ -188,7 +235,7 @@ if uploaded_file is not None:
                     1
                 )
 
-            predicted_class = CLASS_NAMES[
+            emotion = CLASS_NAMES[
                 predicted.item()
             ]
 
@@ -196,21 +243,21 @@ if uploaded_file is not None:
                 confidence.item() * 100
             )
 
-            # Display result
-            st.subheader("Prediction")
+            # Results
+            st.subheader("Prediction Result")
 
             st.write(
-                f"### Emotion: {predicted_class}"
+                f"### Emotion: {emotion}"
             )
 
             st.write(
                 f"### Confidence: {confidence_score:.2f}%"
             )
 
-        # Show final image
+        # Display image with boxes
         st.image(
             image_np,
-            caption='Detected Face(s)',
+            caption="Detected Face(s)",
             use_container_width=True
         )
 
@@ -220,5 +267,5 @@ if uploaded_file is not None:
 st.markdown("---")
 
 st.caption(
-    "Built with Streamlit + PyTorch + EfficientNet"
+    "Built using Streamlit + PyTorch + EfficientNet"
 )
